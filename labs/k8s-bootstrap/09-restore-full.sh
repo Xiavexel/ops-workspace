@@ -19,6 +19,13 @@ fi
 
 BACKUP_DIR="$1"
 
+# ========== 新增：可调参数（优先读取环境变量） ==========
+API_IP="${API_IP:-192.168.2.22}"
+POD_CIDR="${POD_CIDR:-10.244.0.0/16}"
+K8S_VER="${K8S_VER:-v1.32.13}"
+IMAGE_REPO="${IMAGE_REPO:-registry.aliyuncs.com/google_containers}"
+# =======================================================
+
 echo ">>> [0/8] 前置检查..."
 command -v kubeadm > /dev/null || { echo "❌ 请先安装 kubeadm（跑完 03-k8s-install.sh）"; exit 1; }
 command -v containerd > /dev/null || { echo "❌ 请先安装 containerd（跑完 02）"; exit 1; }
@@ -81,10 +88,10 @@ echo "  ✅ 系统配置已恢复"
 
 echo ">>> [7/8] 重新初始化控制平面（复用已有证书）..."
 kubeadm init \
-    --apiserver-advertise-address=192.168.2.22 \
-    --image-repository=registry.aliyuncs.com/google_containers \
-    --pod-network-cidr=10.244.0.0/16 \
-    --kubernetes-version=v1.32.13 \
+    --apiserver-advertise-address=$API_IP \
+    --image-repository=$IMAGE_REPO \
+    --pod-network-cidr=$POD_CIDR \
+    --kubernetes-version=$K8S_VER \
     --ignore-preflight-errors=all
 echo "  ✅ 集群初始化完成"
 

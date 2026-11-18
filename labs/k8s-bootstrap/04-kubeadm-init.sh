@@ -13,8 +13,8 @@ fi
 # 可修改参数（优先读取环境变量，如果没有则使用默认值）
 API_IP="${API_IP:-192.168.2.22}"
 POD_CIDR="${POD_CIDR:-10.244.0.0/16}"
-K8S_VER="v1.32.13"
-IMAGE_REPO="registry.aliyuncs.com/google_containers"
+K8S_VER="${K8S_VER:-v1.32.13}"
+IMAGE_REPO="${IMAGE_REPO:-registry.aliyuncs.com/google_containers}"
 
 # 【修复】正确获取原用户家目录
 REAL_USER="${SUDO_USER:-root}"

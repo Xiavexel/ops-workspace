@@ -121,7 +121,11 @@ sudo ~/k8s-bootstrap/07-backup-etcd.sh
 **症状**：改坏了 `/etc/containerd/config.toml` 或 GRUB，集群异常，K8s 数据完好。
 
 ```bash
-sudo ~/k8s-bootstrap/08-restore-configs.sh /data/backups/20260916-033702
+# 查看备份目录，找到最新的 <时间戳>
+ls -ldt /data/backups/20*/
+
+# 执行灾难恢复
+sudo ./09-restore-full.sh /data/backups/<时间戳>
 ```
 
 脚本会：
@@ -155,7 +159,7 @@ sudo ./02-containerd-setup.sh
 sudo ./03-k8s-install.sh
 
 # 第 4 步替换为灾难恢复
-sudo ./09-restore-full.sh /data/backups/20260916-033702
+sudo ./09-restore-full.sh /data/backups/<时间戳>
 
 # 最后一步仍然不要 sudo
 ./05-post-init.sh

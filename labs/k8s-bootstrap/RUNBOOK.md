@@ -97,11 +97,11 @@ kubectl get pods -A        # 所有 Pod 应 Running
 ### 执行步骤
 
 ```bash
-# 1. 查看可用备份
+# 1. 查看可用备份（获取真实的 <时间戳>）
 ls -ldt /data/backups/20*/
 
-# 2. 一条命令恢复（需输入 yes 确认）
-sudo ~/k8s-bootstrap/08-restore-configs.sh /data/backups/20260916-XXXXXX
+# 2. 执行恢复（请将 <时间戳> 替换为上一步查到的实际目录名，如 20260916-033702）
+sudo ~/k8s-bootstrap/08-restore-configs.sh /data/backups/<时间戳>
 
 # 3. 脚本会：
 #    - 保存当前状态到 rollback-<时间戳>
@@ -145,7 +145,7 @@ sudo ./10-install-docker.sh
 
 # ========== 阶段 3：完整灾难恢复 ==========
 # 复用备份证书，重建集群，恢复所有配置
-sudo ./09-restore-full.sh /data/backups/20260916-XXXXXX
+sudo ./09-restore-full.sh /data/backups/<时间戳>
 
 # ========== 阶段 4：kubectl 认证（⚠️ 不要 sudo）==========
 ./05-post-init.sh
