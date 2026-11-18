@@ -88,7 +88,7 @@ sudo ./02-containerd-setup.sh
 
 如果你想系统性地阅读底层排障与架构演进思路，请从总览文档开始：
 
-👉 **第一阶段终极知识库**：[00-linux-ops-overview.md](00-linux-ops-overview.md)
+👉 **第一阶段终极知识库**：[00-linux-ops-overview.md](docs/01-linux-base/00-linux-ops-overview.md)
 
 ---
 
