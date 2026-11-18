@@ -15,11 +15,11 @@ fi
 set -e
 
 # ========== 可调参数 ==========
-HOST_IP="192.168.2.22"        # 宿主机内网 IP
-KUBOARD_HTTP_PORT="30080"     # Web 访问端口
-KUBOARD_AGENT_PORT="30081"    # Agent 通信端口
-KUBOARD_ETCD_PORT="2381"      # Kuboard 内置 etcd 端口
-KUBOARD_VERSION="v3"          # Kuboard 版本
+HOST_IP="${HOST_IP:-192.168.2.22}"        # 宿主机内网 IP
+KUBOARD_HTTP_PORT="30080"                 # Web 访问端口
+KUBOARD_AGENT_PORT="30081"                # Agent 通信端口
+KUBOARD_ETCD_PORT="2381"                  # Kuboard 内置 etcd 端口
+KUBOARD_VERSION="v3"                      # Kuboard 版本
 # ==============================
 
 # 获取 REAL_USER（用于 kubectl 操作）

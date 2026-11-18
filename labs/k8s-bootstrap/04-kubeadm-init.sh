@@ -10,9 +10,9 @@ if [ "$EUID" -ne 0 ]; then
     exec sudo "$0" "$@"
 fi
 
-# 可修改参数
-API_IP="192.168.2.22"
-POD_CIDR="10.244.0.0/16"
+# 可修改参数（优先读取环境变量，如果没有则使用默认值）
+API_IP="${API_IP:-192.168.2.22}"
+POD_CIDR="${POD_CIDR:-10.244.0.0/16}"
 K8S_VER="v1.32.13"
 IMAGE_REPO="registry.aliyuncs.com/google_containers"
 
