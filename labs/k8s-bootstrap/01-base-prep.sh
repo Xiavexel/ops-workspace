@@ -12,8 +12,9 @@ fi
 
 set -e
 echo ">>> [1/6] 设置主机名..."
-hostnamectl set-hostname xia-server
-grep -q "127.0.0.1.*xia-server" /etc/hosts || echo "127.0.0.1   xia-server" >> /etc/hosts
+NEW_HOSTNAME="${NEW_HOSTNAME:-xia-server}"
+hostnamectl set-hostname "$NEW_HOSTNAME"
+grep -q "127.0.0.1.*$NEW_HOSTNAME" /etc/hosts || echo "127.0.0.1   $NEW_HOSTNAME" >> /etc/hosts
 
 echo ">>> [2/6] 关闭 SELinux（宽容模式）..."
 setenforce 0 2>/dev/null || true
