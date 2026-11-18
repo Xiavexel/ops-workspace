@@ -1,0 +1,53 @@
+services:
+  # ========== 前端：Nginx ==========
+  web:
+    build: ./web
+    container_name: stack-web
+    ports:
+      - "8095:80"
+    networks:
+      - frontend
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # ========== 后端：Flask ==========
+  api:
+    build: ./api
+    container_name: stack-api
+    environment:
+      DB_HOST: db
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      DB_NAME: ${MYSQL_DATABASE}
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      - db
+    restart: on-failure
+
+  # ========== 数据库：MySQL ==========
+  db:
+    image: mysql:8.0
+    container_name: stack-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - db-data:/var/lib/mysql
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - backend
+    restart: unless-stopped
+
+# ========== 网络 ==========
+networks:
+  frontend:
+  backend:
+
+# ========== 数据卷 ==========
+volumes:
+  db-data:

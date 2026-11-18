@@ -1,0 +1,20 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-compose
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: testdb
+    ports:
+      - "3307:3306"
+    volumes:
+      # 方式 A：Named Volume（Docker 自动管理，存 /data/docker/volumes/）
+      - mysql-data:/var/lib/mysql
+      
+      # 方式 B：Bind Mount 到 /data/apps/（你手动管理）
+      - /data/apps/mysql-compare/config/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+      - /data/apps/mysql-compare/logs:/var/log/mysql
+    restart: unless-stopped
+
+volumes:
+  mysql-data:

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Compose Full Stack</title>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <h1>Compose Full Stack Demo</h1>
+    <p>前端：Nginx</p>
+    <p>后端：Flask</p>
+    <p>数据库：MySQL</p>
+    
+    <button onclick="loadUsers()">加载用户列表</button>
+    <pre id="result"></pre>
+
+    <script>
+    function loadUsers() {
+        fetch('/api/users')
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+            })
+            .catch(err => {
+                document.getElementById('result').textContent = 'Error: ' + err;
+            });
+    }
+    </script>
+</body>
+</html>

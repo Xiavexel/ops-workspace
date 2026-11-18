@@ -1,0 +1,5 @@
+[
+  {"name": "Kuboard面板", "url": "http://127.0.0.1:30080/", "timeout": 2},
+  {"name": "Flask业务", "url": "http://127.0.0.1:8095/", "timeout": 2},
+  {"name": "不存在服务", "url": "http://127.0.0.1:9999/", "timeout": 2}
+]

@@ -1,0 +1,13 @@
+# 核心密码配置
+*.json
+!*.json.example
+!targets.json
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 日志文件
+*.log
+.env
+*.env
