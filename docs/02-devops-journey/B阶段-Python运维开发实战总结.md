@@ -170,14 +170,14 @@ def run_ssh(host_info):
 
 ---
 
-## 7. 工程化视角复盘与代码演进建议
+## 7. SRE 视角复盘与架构演进建议
 
-在脚本能够跑通的基础上，从生产级工程化（DevOps）视角，本套 Python 工具库还有以下可以深度演进的方向：
+本次 Python 自动化工具的开发，不仅是实现功能，更是对“用代码解决运维痛点”的工程化实践。从 SRE 与生产级 DevOps 的视角来看，本套工具库未来有以下演进方向：
 
-1. **凭证与安全管理（Credentials Management）**：在 `hosts.json` 中明文存放 SSH 密码存在极高的安全风险。生产环境中应强制使用 SSH Key（`key_filename`）进行免密认证；若必须用密码，应结合环境变量或密钥管理服务（如 HashiCorp Vault、K8s Secrets）动态注入，严禁将明文密码提交至版本控制系统。
-2. **异常隔离与退避重试（Backoff Strategy）**：手写 `for` 循环重试适合教学演示。在复杂网络环境下，建议引入 `tenacity` 库实现指数退避（Exponential Backoff），避免因服务端短时间过载导致的重试风暴，同时结合 `requests` 的 `HTTPAdapter` 处理底层连接池。
-3. **并发资源控制（Concurrency Control）**：使用 `ThreadPoolExecutor` 时，不能盲目设置过大的 `max_workers`，否则会导致本地文件句柄耗尽（`Too many open files`）或目标服务器触发连接数限制。必须结合实际压测结果设置合理的并发阈值。
-4. **结果集标准化输出**：目前的表格打印（f-string 对齐）适合终端阅读。若要将工具集成到企业监控平台（如自动化运维系统），建议将巡检结果封装为统一的 JSON 结构或直接输出 CSV 报表，方便后续对接 Prometheus Pushgateway 或 ELK 进行数据可视化。
+1. **凭证与安全管理**：在 `hosts.json` 中明文存储 SSH 密码触碰了安全红线。生产环境应强制使用 SSH Key 进行免密认证；涉及敏感配置时，需结合环境变量或密钥管理服务（如 Vault、K8s Secrets）动态注入，严禁硬编码提交至 Git。
+2. **异常隔离与退避重试**：手写 `for` 循环重试在复杂内网极易引发重试风暴。建议引入 `tenacity` 库实现指数退避，并结合 `requests` 的 `HTTPAdapter` 管理底层连接池，提升容错能力。
+3. **并发资源控制**：使用 `ThreadPoolExecutor` 时不能盲目设置过大的 `max_workers`，否则会导致本地句柄耗尽或触发目标端安全限制。必须结合实际压测结果，实现“受控并发”。
+4. **结果集标准化输出**：目前的终端表格仅适合肉眼阅读。为了让工具平滑接入企业监控大盘，巡检结果应封装为统一的 JSON 结构，以便后续对接 Prometheus Pushgateway 或 ELK 进行数据可视化。
 
 ---
 
