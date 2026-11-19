@@ -76,8 +76,11 @@ mysql -u appuser -p appdb < /tmp/appdb_backup.sql
 - **解决**：不要给业务账号乱加高权限。在备份命令中加上 `--no-tablespaces` 参数，跳过表空间元数据的备份即可。
 - **现象**：Python/Docker 客户端连接 MySQL 8.0 报错缺少 `cryptography`。
 - **原因**：MySQL 8.0 默认认证插件为 `caching_sha2_password`，需要客户端具备 SHA256 加密能力，旧版客户端依赖库不满足。
-- **解决**：优先在客户端环境执行 `pip install cryptography` 补齐依赖；仅当客户端无法升级（如老旧镜像）时，才调整服务端认证插件：
-  `ALTER USER 'appuser'@'%' IDENTIFIED WITH mysql_native_password BY 'App@123456';`
+- **解决**：优先在客户端环境执行 `pip install cryptography` 补齐依赖（这是唯一正解）。
+- **⚠️ 版本变更（MySQL 8.4+）**：`mysql_native_password` 自 8.4 起**已默认移除**，服务端不再内置该插件。原本"降级认证插件"的兜底方案在 8.4 上会直接报 `Plugin 'mysql_native_password' is not loaded`。所以 8.4+ 只能走 `caching_sha2_password`，必须让客户端支持 SHA256（装 `cryptography`，或升级客户端驱动）。
+- **仅适用于 8.0 及更早**：确认服务端版本 < 8.4 且客户端确实无法升级时，才可用
+  `ALTER USER 'appuser'@'%' IDENTIFIED WITH mysql_native_password BY '<你的密码>';`
+  （示例里不要写真实密码；执行前先 `SELECT VERSION();` 确认版本。）
 
 ---
 

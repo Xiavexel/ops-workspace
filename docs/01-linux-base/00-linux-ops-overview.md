@@ -17,7 +17,6 @@
 | Python 自动化 | 模块七（速查版） | [B阶段-Python运维开发实战总结.md](../02-devops-journey/B阶段-Python运维开发实战总结.md) |
 | K8s 监控与排障 | 模块八（速查版） | [C阶段（上）-K8s监控部署与云原生排障实战总结.md](../02-devops-journey/C阶段（上）-K8s监控部署与云原生排障实战总结.md) |
 
-> 专题复习：[review-nginx-mysql.md](review-nginx-mysql.md)（Nginx 与 MySQL 排障复盘）
 
 ---
 
@@ -106,7 +105,7 @@
 - **备份报错**：普通账号执行 `mysqldump` 报错 `Access denied; you need (at least one of) the PROCESS privilege(s)`。
   - **解决**：千万别给业务账号乱加高权限，直接在命令中加 `--no-tablespaces` 即可。
 - **认证报错**：Python/Docker 连 MySQL 8.0 报错 `cryptography required`。
-  - **解决**：客户端装 `cryptography` 库，或降级服务端认证方式为 `mysql_native_password`。
+  - **解决**：客户端装 `cryptography` 库。**⚠️ MySQL 8.4 起 `mysql_native_password` 已默认移除**，"降级插件"的老办法在 8.4 上会报 `Plugin ... is not loaded`，8.4+ 只能让客户端支持 `caching_sha2_password`。
 
 ### 3. 慢查询排查
 
