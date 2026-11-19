@@ -10,6 +10,7 @@
 
 ```
 ~/k8s-bootstrap/
+├── versions.env             K8s 版本与镜像源（唯一真实源，改这里）
 ├── 01-base-prep.sh          系统基础准备
 ├── 02-containerd-setup.sh   containerd 安装与配置
 ├── 03-k8s-install.sh        K8s 组件安装
@@ -38,23 +39,24 @@
 
 ### 部署前修改参数
 
-**`01-base-prep.sh`** 第 13 行（改主机名）：
+**版本与镜像源**：统一放在 `versions.env`（唯一真实源），一般不需要动：
 ```bash
-hostnamectl set-hostname xia-server    # 改成你的主机名
+# 默认 K8s v1.32.13 + 阿里云镜像源；升级集群只改这一个文件
+K8S_MINOR="v1.32"
+K8S_PATCH="1.32.13"
+```
+> `03` / `04` / `09` 三个脚本会自动 `source` 它；也可临时用环境变量覆盖，例如
+> `K8S_PATCH=1.32.15 sudo ./03-k8s-install.sh`
+
+**`01-base-prep.sh`** 主机名（脚本已改为环境变量，不必再改脚本内容）：
+```bash
+NEW_HOSTNAME=your-host sudo ./01-base-prep.sh   # 不传则默认 xia-server
 ```
 
-**`04-kubeadm-init.sh`** 第 17-20 行：
+**`04-kubeadm-init.sh`** 第 14 行区域（只有 API_IP 必须改）：
 ```bash
 API_IP="192.168.2.22"           # 改成你的宿主机内网 IP
-POD_CIDR="10.244.0.0/16"        # Flannel 默认网段，一般不改
-K8S_VER="v1.32.13"              # 与 03 脚本的 K8S_PATCH 保持一致
-IMAGE_REPO="registry.aliyuncs.com/google_containers"
-```
-
-**`03-k8s-install.sh`** 第 17-18 行：
-```bash
-K8S_MINOR="v1.32"               # 与 04 的 K8S_VER 主次版本一致
-K8S_PATCH="1.32.13"             # 与 04 的 K8S_VER 完全一致
+# POD_CIDR / K8S_VER / IMAGE_REPO 已由 versions.env 提供，无需手改
 ```
 
 ### 执行步骤
@@ -116,24 +118,29 @@ sudo ~/k8s-bootstrap/07-backup-etcd.sh
 
 ---
 
-## 🔧 场景三：配置误改后恢复
+## 🔧 场景三：配置误改后恢复（两种粒度，别用错）
 
-**症状**：改坏了 `/etc/containerd/config.toml` 或 GRUB，集群异常，K8s 数据完好。
+**症状**：改坏了 `/etc/containerd/config.toml`、`daemon.json`、GRUB 或 kubeconfig，集群起不来，但 `/var/lib/etcd` 里的数据完好。
+
+### 3A 只恢复配置（默认选这个）
 
 ```bash
 # 查看备份目录，找到最新的 <时间戳>
 ls -ldt /data/backups/20*/
 
-# 执行灾难恢复
+# 配置级恢复：只解包配置文件，不动证书、不动 etcd、不重跑 kubeadm
+sudo ./08-restore-configs.sh /data/backups/<时间戳>
+```
+
+脚本会：校验备份包 → 先把当前配置打包到 `rollback-<时间戳>` → 二次确认 → 还原配置 → 重启 containerd/docker → 用 `kubectl get nodes` 验证。
+
+### 3B 完整重建（重装级，谨慎）
+
+```bash
 sudo ./09-restore-full.sh /data/backups/<时间戳>
 ```
 
-脚本会：
-1. 校验备份完整性
-2. 保存当前状态到 `rollback-<时间戳>`
-3. 询问是否恢复证书（日常恢复选 **N**）
-4. 恢复所有配置文件
-5. 重启 containerd 并验证集群
+⚠️ **这个脚本会删除 `/etc/kubernetes/pki`、`/var/lib/etcd` 并重新执行 `kubeadm init`**，属于"系统重装后重建"的手段。日常配置误改**不要**用它——它会把你本来完好的集群身份和数据一起推平。
 
 ---
 
@@ -238,13 +245,16 @@ sudo ~/k8s-bootstrap/11-install-kuboard.sh
 | Flannel | v0.25+ |
 > ⚠️ containerd 2.x 必须显式设置 `images.registry.config_path`，否则 `/etc/containerd/certs.d/` 下的镜像加速配置全部失效。
 
-### 升级 K8s 时需同步修改
+### 升级 K8s 时怎么改
 
-| 脚本 | 变量 |
-|---|---|
-| `03-k8s-install.sh` | `K8S_MINOR` 和 `K8S_PATCH` |
-| `04-kubeadm-init.sh` | `K8S_VER` |
-| `09-restore-full.sh` | `--kubernetes-version` 参数 |
+只改 `versions.env` 里的 `K8S_PATCH`（`K8S_VER` 会自动由它推导成 `v1.32.xx`），
+`03` / `04` / `09` 三个脚本启动时各自 `source` 它，不会再出现"03 装 1.32、04 初始化 1.32.13"的错配。
+
+改完建议自查一遍有没有残留硬编码：
+
+```bash
+grep -rn "1\.32\." *.sh versions.env
+```
 
 ---
 
