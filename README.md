@@ -1,7 +1,13 @@
 # Ops-Workspace：个人 DevOps 与云原生实战沙盘
 
+> **🙋 关于作者（先说清楚，免得误判）**
+> 软件技术专业出身，正在**从 Linux 运维入行**，计划在 2–3 年内过渡到 DevOps。
+> - `docs/01-linux-base`：**我独立做过**——自建过 Minecraft / Terraria 游戏服务器、用 1Panel 部署过应用、日常 CLI 与排障是我的舒适区。
+> - `docs/02-devops-journey` 的 A/B/C 三阶段：**跟做完成**（有参考实现、有人在旁带），Shell 长脚本独立从零写仍有阻碍，B 与 C 刚学完、尚未系统复习。
+> - 环境：全部在**单机 Homelab**（Rocky Linux 单节点 + 虚拟机）完成，**无企业生产环境经验**。文中标注「生产视角推演」的部分是业界通用做法的整理，不是我的落地记录。
+>
 > **📌 项目背景与环境界定**
-> 本项目是一个基于个人 Homelab 环境（Rocky Linux 单节点 + 虚拟机）构建的 DevOps 实战沙盘。文档中的排障过程均为真实踩坑记录；各阶段末尾的“SRE 视角与架构演进”模块，是基于当前单机环境对真实生产集群的前瞻性推演。受限于个人硬件资源，暂未在多节点高可用集群中大规模落地，旨在验证技术原理与架构方向。欢迎交流指正。
+> 本项目是一个基于个人 Homelab 环境（Rocky Linux 单节点 + 虚拟机）构建的 DevOps 实战沙盘。文档中的排障过程均为真实踩坑记录；各阶段末尾的“生产视角推演”模块，是基于当前单机环境对真实生产集群的前瞻性推演。受限于个人硬件资源，暂未在多节点高可用集群中大规模落地，旨在验证技术原理与架构方向。欢迎交流指正。
 
 本项目是一个面向现代互联网架构的 Linux 运维与 DevOps 实战知识库。内容涵盖从传统 Linux 底座排障，到自动化脚本（Shell/Python）开发，再到容器化与 K8s 集群监控的完整演进路线。不仅是学习笔记，更包含大量在真实（或模拟生产）环境中沉淀的生产级工具集。
 
@@ -44,7 +50,7 @@
 
 ## 🔍 核心目录深度解析
 
-### 1. `labs/k8s-bootstrap/` (K8s 生产级部署与灾备)
+### 1. `labs/k8s-bootstrap/` (K8s 集群部署与灾备)
 包含基于 `kubeadm` 从零构建 K8s 集群的 11 个一键执行脚本，并附带了详尽的生产级运维手册（`RUNBOOK.md`）。
 - **亮点**：支持完整的 `containerd` 网络代理配置、镜像加速排障，以及基于 etcd 快照与 `kubeadm` 证书复用的**灾难恢复（Disaster Recovery）** 方案。
 
@@ -57,7 +63,7 @@
 - **亮点**：实现了前后端网络隔离（frontend/backend）、环境变量注入密码、以及容器健康检查与重启策略。
 
 ### 4. `tools/` (自动化运维利器)
-- **`shell/svc_health.sh`**：具备受控并发（`wait -n`）、结构化日志与 Systemd 闭环告警的生产级巡检脚本。
+- **`shell/svc_health.sh`**：具备受控并发（`wait -n`）、结构化日志与 Systemd 闭环告警的工程化巡检脚本。
 - **`python/ssh_batch.py`**：基于 Paramiko 的批量 SSH 并发执行工具。
 - **`python/api_monitor.py`**：通过 HTTP 接口探测服务存活并触发告警的轻量级探针。
 
@@ -89,7 +95,7 @@ sudo ./02-containerd-setup.sh
 
 如果你想系统性地阅读底层排障与架构演进思路，请从总览文档开始：
 
-👉 **第一阶段终极知识库**：[00-linux-ops-overview.md](00-linux-ops-overview.md)
+👉 **第一阶段终极知识库**：[docs/01-linux-base/00-linux-ops-overview.md](docs/01-linux-base/00-linux-ops-overview.md)
 
 ---
 
