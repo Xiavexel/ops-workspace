@@ -11,9 +11,15 @@ fi
 
 set -e
 
-# 【P1 修复】统一精确版本号，与 04-kubeadm-init.sh 的 K8S_VER 保持一致
-K8S_MINOR="v1.32"          # 用于仓库 URL
-K8S_PATCH="1.32.13"        # 用于锁定具体版本
+# 【P1 修复】版本号统一到 versions.env，升级时只改一处
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${SCRIPT_DIR}/versions.env" ]; then
+    # shellcheck disable=SC1091
+    source "${SCRIPT_DIR}/versions.env"
+fi
+
+K8S_MINOR="${K8S_MINOR:-v1.32}"     # 用于仓库 URL
+K8S_PATCH="${K8S_PATCH:-1.32.13}"   # 用于锁定具体版本
 
 echo ">>> [1/3] 添加 Kubernetes 官方仓库..."
 cat <<EOF > /etc/yum.repos.d/kubernetes.repo

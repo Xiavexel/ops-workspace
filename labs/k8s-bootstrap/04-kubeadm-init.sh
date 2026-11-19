@@ -10,10 +10,17 @@ if [ "$EUID" -ne 0 ]; then
     exec sudo "$0" "$@"
 fi
 
-# 可修改参数（优先读取环境变量，如果没有则使用默认值）
+# 【P1 修复】版本/镜像源统一到 versions.env，升级时只改一处
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${SCRIPT_DIR}/versions.env" ]; then
+    # shellcheck disable=SC1091
+    source "${SCRIPT_DIR}/versions.env"
+fi
+
+# 可修改参数（优先级：环境变量 > versions.env > 这里的默认值）
 API_IP="${API_IP:-192.168.2.22}"
 POD_CIDR="${POD_CIDR:-10.244.0.0/16}"
-K8S_VER="${K8S_VER:-v1.32.13}"
+K8S_VER="${K8S_VER:-v${K8S_PATCH:-1.32.13}}"
 IMAGE_REPO="${IMAGE_REPO:-registry.aliyuncs.com/google_containers}"
 
 # 【修复】正确获取原用户家目录

@@ -19,10 +19,16 @@ fi
 
 BACKUP_DIR="$1"
 
-# ========== 新增：可调参数（优先读取环境变量） ==========
+# ========== 可调参数（优先级：环境变量 > versions.env > 默认值） ==========
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${SCRIPT_DIR}/versions.env" ]; then
+    # shellcheck disable=SC1091
+    source "${SCRIPT_DIR}/versions.env"
+fi
+
 API_IP="${API_IP:-192.168.2.22}"
 POD_CIDR="${POD_CIDR:-10.244.0.0/16}"
-K8S_VER="${K8S_VER:-v1.32.13}"
+K8S_VER="${K8S_VER:-v${K8S_PATCH:-1.32.13}}"
 IMAGE_REPO="${IMAGE_REPO:-registry.aliyuncs.com/google_containers}"
 # =======================================================
 
