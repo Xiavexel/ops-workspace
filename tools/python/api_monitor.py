@@ -18,7 +18,7 @@ logging.basicConfig(
 def check_service(target):
     name = target["name"]
     url = target["url"]
-    timeout = target["timeout"]
+    timeout = target.get("timeout", 3)  # 允许配置缺省，避免字段缺失时直接 KeyError
     max_retries = 3  # 最大重试次数（总共请求 3 次）
     
     for attempt in range(max_retries):
@@ -74,10 +74,18 @@ def main():
         # 注意这里，把原来的 TARGETS 换成了从文件读取的 targets
         future_to_target = {executor.submit(check_service, t): t for t in targets}
         
+        # 【修复】汇总判断必须在循环外
+        # 原写法把 `if fails > 0: sys.exit(1)` 写在循环里：第一个目标失败就整体退出，
+        # 剩余 future 被丢弃、汇总不完整，也拿不到"到底挂了几个"的结果。
         for future in as_completed(future_to_target):
-            if not future.result():  
+            if not future.result():
                 fails += 1
-            if fails > 0: sys.exit(1)
+
+    if fails > 0:
+        logging.error(f"==== 巡检结束: {fails}/{len(targets)} 个目标失败 ====")
+        sys.exit(1)
+
+    logging.info(f"==== 巡检结束: 全部 {len(targets)} 个目标正常 ====")
 
 if __name__ == "__main__":
     main()

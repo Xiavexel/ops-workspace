@@ -7,14 +7,21 @@
 
 set -e
 
-# 参数：默认关机，可传 reboot 重启
-ACTION="${1:-poweroff}"
-
-# 颜色
+# 颜色（必须定义在下方校验之前，否则报错信息里的色码是空的）
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
+
+# 参数：默认关机，可传 reboot 重启
+ACTION="${1:-poweroff}"
+
+# 【修复】参数合法性必须在停服务之前校验
+# 原写法把校验放在最后：误输入 `restart` 也会先把 kubelet/docker/containerd 全部停掉
+if [ "$ACTION" != "reboot" ] && [ "$ACTION" != "poweroff" ]; then
+    echo -e "${RED}❌ 未知操作：$ACTION（只支持 reboot / poweroff）${NC}"
+    exit 1
+fi
 
 echo -e "${YELLOW}========================================${NC}"
 echo -e "${YELLOW}  安全关机流程${NC}"
@@ -63,10 +70,7 @@ sleep 2
 if [ "$ACTION" = "reboot" ]; then
     echo -e "${GREEN}    正在重启...${NC}"
     sudo systemctl reboot
-elif [ "$ACTION" = "poweroff" ]; then
+else
     echo -e "${GREEN}    正在关机...${NC}"
     sudo systemctl poweroff
-else
-    echo -e "${RED}❌ 未知操作：$ACTION（只支持 reboot / poweroff）${NC}"
-    exit 1
 fi

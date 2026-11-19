@@ -14,36 +14,52 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
+EXEC_TIMEOUT = 10  # 远端命令执行超时（秒）：不加超时，一条卡死的命令会永久占住一个 worker
+
 def run_ssh(host_info):
     """执行 SSH 远程命令的核心函数"""
     host = host_info["host"]
     port = host_info.get("port", 22)
     user = host_info["user"]
-    password = host_info["password"]
+    password = host_info.get("password")
+    key_file = host_info.get("key_file")   # 优先用密钥：配置了 key_file 就不再走密码
     command = host_info["command"]
-    
+
     # 初始化 SSH 客户端
     ssh = paramiko.SSHClient()
-    # 生产环境千万别用这个，这里为了实验方便，自动接受未知的主机指纹
+    # 注意：AutoAddPolicy 只适合内网实验环境。
+    # 生产应改为 RejectPolicy，并先用 ssh-keyscan <host> >> ~/.ssh/known_hosts 预置指纹。
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    
+
     try:
-        # 连接超时设 3 秒
-        ssh.connect(hostname=host, port=port, username=user, password=password, timeout=3)
-        # 执行命令
-        stdin, stdout, stderr = ssh.exec_command(command)
-        # 读取结果并转码
-        output = stdout.read().decode('utf-8').strip()
-        error = stderr.read().decode('utf-8').strip()
-        
-        if error:
-            return {"status": "FAIL", "host": host, "msg": error}
+        connect_kwargs = dict(
+            hostname=host, port=port, username=user,
+            timeout=3, banner_timeout=10, auth_timeout=10,
+        )
+        if key_file:
+            connect_kwargs["key_filename"] = key_file
+        else:
+            connect_kwargs["password"] = password
+        ssh.connect(**connect_kwargs)
+
+        # 【修复】exec_command 必须带 timeout，否则远端 hang 住会永久阻塞线程
+        stdin, stdout, stderr = ssh.exec_command(command, timeout=EXEC_TIMEOUT)
+        # 【修复】成败以退出码为准，而不是"stderr 有没有输出"
+        # 很多正常命令（如 find 的权限告警、systemctl 的提示）也会写 stderr
+        exit_status = stdout.channel.recv_exit_status()
+        output = stdout.read().decode('utf-8', 'replace').strip()
+        error = stderr.read().decode('utf-8', 'replace').strip()
+
+        if exit_status != 0:
+            detail = error or output or "(无输出)"
+            return {"status": "FAIL", "host": host,
+                    "msg": f"exit={exit_status} | {detail}"}
         return {"status": "PASS", "host": host, "msg": output}
-        
+
     except paramiko.AuthenticationException:
-        return {"status": "FAIL", "host": host, "msg": "认证失败(密码错误)"}
+        return {"status": "FAIL", "host": host, "msg": "认证失败(密码/密钥错误)"}
     except Exception as e:
-        return {"status": "FAIL", "host": host, "msg": str(e)}
+        return {"status": "FAIL", "host": host, "msg": f"{e.__class__.__name__}: {e}"}
     finally:
         ssh.close()
 
