@@ -48,9 +48,24 @@ echo -e "${GREEN}    ✅ kubelet 已停止${NC}"
 # ========== 3. 停止 Docker ==========
 echo ""
 echo -e "${YELLOW}>>> [2/4] 停止 Docker...${NC}"
-if systemctl is-active docker &>/dev/null; then
-    sudo systemctl stop docker
-    echo -e "${GREEN}    ✅ Docker 已停止${NC}"
+
+# 【修复】docker.socket 是 docker.service 的 socket 激活单元，只停 docker.service 时
+# systemd 会告警：
+#   "Stopping 'docker.service', but its triggering units are still active: docker.socket"
+# 此时 socket 仍在监听 /var/run/docker.sock，随时可能把 docker.service 重新拉起，
+# 关机前容器被重新启动，既谈不上“优雅停止”，后续状态校验也会失真。
+# 解决：先停 docker.socket 断掉 socket 激活入口，再停 docker.service。
+if systemctl is-active --quiet docker.service || systemctl is-active --quiet docker.socket; then
+    sudo systemctl stop docker.socket 2>/dev/null || true
+    sudo systemctl stop docker.service
+    # 校验：两个单元都必须真的停下，否则不能带着活动单元去关机
+    if systemctl is-active --quiet docker.service || systemctl is-active --quiet docker.socket; then
+        echo -e "${RED}    ❌ 停止失败，仍有活动单元（通常是 docker.socket 又把服务拉起来了）：${NC}"
+        systemctl is-active docker.socket docker.service 2>/dev/null || true
+        echo -e "${RED}       请手动执行 sudo systemctl stop docker.socket docker.service 后重试${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}    ✅ Docker 已停止（docker.socket 也已停，不会被 socket 激活重新拉起）${NC}"
 else
     echo -e "${GREEN}    ⏭  Docker 未运行，跳过${NC}"
 fi
