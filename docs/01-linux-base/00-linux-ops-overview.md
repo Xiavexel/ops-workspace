@@ -10,6 +10,7 @@
 |---|---|---|
 | 网络与连通性 | 模块一 | [01-linux-network-troubleshooting.md](01-linux-network-troubleshooting.md) |
 | 系统服务/日志/磁盘 | 模块二 | [02-linux-service-log-disk-management.md](02-linux-service-log-disk-management.md) |
+| LVM 卷管理与在线扩容 | 模块二（存储扩展） | [06-lvm-and-filesystem-management.md](06-lvm-and-filesystem-management.md) |
 | 性能瓶颈（CPU/内存/IO） | 模块三 | [03-performance-bottleneck-troubleshooting.md](03-performance-bottleneck-troubleshooting.md) |
 | Nginx 网关 | 模块四 | [04-nginx-config-troubleshooting.md](04-nginx-config-troubleshooting.md) |
 | MySQL 运维 | 模块五 | [05-mysql-ops-and-tuning.md](05-mysql-ops-and-tuning.md) |
@@ -54,7 +55,14 @@
 - **覆盖配置**：直接改 `/usr/lib/...` 会被系统升级覆盖。必须用 `sudo systemctl edit <服务名>` 生成 `override.conf` 片段。
 - **日志无限大**：Systemd 自带 `journalctl` 有默认大小限制，但传统应用日志（如 Nginx）必须配 `logrotate`（`size 100M`, `rotate 7`, `compress`）。**避坑**：`logrotate` 中 `size` 与 `daily` 并存时只按 `size` 判断（详见 02 明细文档）。
 
-**明细文档**：[02-linux-service-log-disk-management.md](02-linux-service-log-disk-management.md)
+### 3. 扩容成功但 `df` 不变（三类根因）
+
+- **A 层次没走完**：`lvextend` 只改块设备长度，`df` 读的是 XFS 超级块里的 `blocks` 字段，必须再执行 `xfs_growfs <挂载点>`。判定：`blockdev --getsize64` 已变大而 `df` 不变。
+- **B 对象错位**：扩的是某块 LV，`df` 看的却是“该路径所在文件系统”的超级块，两者可以是两块不同的设备。判定：`findmnt -no SOURCE <路径>` 归一化后与目标 LV 不一致。
+- **C 挂载层级错**：`mount` 是叠加不是替换，后挂的设备遮住先挂的，`df` 只显示最上层。判定：`umount` 一次后 `df` 数字突变。
+- **容量对不上标称**：每个 PV 固定预留 4MiB 给 LVM 元数据（`not usable 4.00 MiB`），10GiB 盘只有 2559 个 PE；文件系统自身还要吃元数据（1GiB LV `mkfs.xfs` 后 `df` 只有 960M）。规划按 PE 算，留 5% 余量。
+
+**明细文档**：[02-linux-service-log-disk-management.md](02-linux-service-log-disk-management.md)　[06-lvm-and-filesystem-management.md](06-lvm-and-filesystem-management.md)
 
 ---
 

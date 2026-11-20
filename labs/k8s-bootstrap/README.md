@@ -35,7 +35,7 @@
 - 系统：Rocky Linux 10 Minimal 全新安装
 - 硬件：x86_64，建议 ≥ 4 核 / 8G 内存 / 50G 硬盘
 - 网络：可访问互联网
-- 分区：`/`（≥ 25G）+ `/data`（剩余全部）
+- 分区：`/`（≥ 25G）+ `/data`（剩余全部）。若后期 `/data` 不足需在线扩容（LVM 环境），步骤与三类坑见 [docs/01-linux-base/06-lvm-and-filesystem-management.md](../../docs/01-linux-base/06-lvm-and-filesystem-management.md)
 
 ### 部署前修改参数
 

@@ -115,6 +115,7 @@ sudo lsof | grep deleted
 - **确认瓶颈**：先执行 `df -h` 找到使用率 100% 的挂载点。
 - **定位元凶**：在该挂载点下使用 `find` 寻找超级大文件（如日志、临时备份）。
 - **正常处理**：确认无用后直接 `rm -f` 删除，或将其压缩转移。
+- **确认需扩容**：先用 `df -i` 排除 inode 耗尽、用 `lsof | grep deleted` 排除已删未释放，剩下的才是真缺容量。LVM 环境下扩容是两步：`sudo lvextend -L +<增量> /dev/<VG>/<LV>` 改变块设备长度，`sudo xfs_growfs <挂载点>` 才让文件系统认领；扩容前必须先 `findmnt -no SOURCE <挂载点>` 核验对象。完整流程与三类坑见 [06-lvm-and-filesystem-management.md](06-lvm-and-filesystem-management.md)。
 
 ### 故障解决方案（幽灵文件经典处理）
 

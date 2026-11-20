@@ -13,7 +13,7 @@
 
 ## 🛠️ 技术栈矩阵
 
-- **OS & 系统底座**：Rocky Linux 10, TCP/IP, Systemd, Logrotate, SELinux
+- **OS & 系统底座**：Rocky Linux 10, LVM2（PV/VG/LV 与在线扩容）, XFS, TCP/IP, Systemd, Logrotate, SELinux
 - **核心网关与中间件**：Nginx (反向代理/限流/HTTPS), MySQL 8.0 (主从备份/慢查询分析)
 - **自动化与开发**：Shell (Bash 并发/异常捕获), Python (Paramiko/K8s API)
 - **容器与云原生**：Docker, Docker Compose, Kubernetes (kubeadm/Flannel), Helm
@@ -28,6 +28,7 @@
 1. **Linux 底层排障**：
    - 解决 `rm` 大文件后空间不释放的“幽灵文件”问题（基于 `lsof` 与 `/proc` 机制）。
    - 从 OSI 模型自下而上排查网络故障（从 `tcpdump` 抓包到 `curl -w` 耗时拆解）。
+   - 拆解“扩容成功但 `df` 不变”的三类根因（块层与文件系统层分离、扩容对象错位、挂载点被覆盖），并把 PE 容量账本（每 PV 固定 4MiB 不可用、`mkfs` 后容量必小于 LV）写成可复算的判据。
 2. **Nginx 生产网关坑点**：
    - 深入解析 `proxy_pass` 尾斜杠导致 404 的底层原因。
    - 解决因 IPv6 监听缺失或 `return` 短路导致限流配置失效的问题。
@@ -64,6 +65,7 @@
 
 ### 4. `tools/` (自动化运维利器)
 - **`shell/svc_health.sh`**：具备受控并发（`wait -n`）、结构化日志与 Systemd 闭环告警的工程化巡检脚本。
+- **`shell/lvm-grow-safe.sh`**：扩容前断言“挂载点背后的设备 == 目标 LV”，不一致即退出；只处理 XFS，支持 `--dry-run` 预演。
 - **`python/ssh_batch.py`**：基于 Paramiko 的批量 SSH 并发执行工具。
 - **`python/api_monitor.py`**：通过 HTTP 接口探测服务存活并触发告警的轻量级探针。
 
