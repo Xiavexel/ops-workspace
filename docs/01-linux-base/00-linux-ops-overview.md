@@ -11,6 +11,7 @@
 | 网络与连通性 | 模块一 | [01-linux-network-troubleshooting.md](01-linux-network-troubleshooting.md) |
 | 系统服务/日志/磁盘 | 模块二 | [02-linux-service-log-disk-management.md](02-linux-service-log-disk-management.md) |
 | LVM 卷管理与在线扩容 | 模块二（存储扩展） | [06-lvm-and-filesystem-management.md](06-lvm-and-filesystem-management.md) |
+| 用户/组/权限（umask·ACL·mask） | 模块二（权限） | [07-user-group-acl-permissions.md](07-user-group-acl-permissions.md) |
 | 性能瓶颈（CPU/内存/IO） | 模块三 | [03-performance-bottleneck-troubleshooting.md](03-performance-bottleneck-troubleshooting.md) |
 | Nginx 网关 | 模块四 | [04-nginx-config-troubleshooting.md](04-nginx-config-troubleshooting.md) |
 | MySQL 运维 | 模块五 | [05-mysql-ops-and-tuning.md](05-mysql-ops-and-tuning.md) |
@@ -62,7 +63,24 @@
 - **C 挂载层级错**：`mount` 是叠加不是替换，后挂的设备遮住先挂的，`df` 只显示最上层。判定：`umount` 一次后 `df` 数字突变。
 - **容量对不上标称**：每个 PV 固定预留 4MiB 给 LVM 元数据（`not usable 4.00 MiB`），10GiB 盘只有 2559 个 PE；文件系统自身还要吃元数据（1GiB LV `mkfs.xfs` 后 `df` 只有 960M）。规划按 PE 算，留 5% 余量。
 
-**明细文档**：[02-linux-service-log-disk-management.md](02-linux-service-log-disk-management.md)　[06-lvm-and-filesystem-management.md](06-lvm-and-filesystem-management.md)
+### 4. 权限判据：umask / mask / effective
+
+- **默认权限**：`文件 = 666 & ~umask`，`目录 = 777 & ~umask`；`022` → `644/755`，`077` → `600/700`。新文件的属组取自进程 egid，不是父目录属组（要继承得给目录设 SGID）。
+- **目录的 `x` 是穿越位**：只有 `r` 没 `x` → 看得见名字、进不去；只有 `x` 没 `r` → 进得去但 `ls` 列不出名字。看目录自身要用 `ls -ld`，`ls -l dir/*` 根本看不到目录。
+- **ACL 的判据只有 `#effective`**：实际生效 = 条目 ∩ `mask`，而 `mask` 只约束 named user / named group / `group::`。`setfacl -m` 每次都会重算 mask，所以要制造限制必须"条目先设完、最后单独 `m::`"；文件有 ACL 时 `chmod` 的组位改的是 mask，不是 `group::`。
+- **排查顺序（错一层结论就错）**：先 `ls -ld` / `stat -c` 定语主与八进制位 → 再 `getfacl` 看有没有 ACL → 最后**只看 `#effective`** 判能不能用。
+
+| 我要判断…… | 看什么 | 判据 |
+|---|---|---|
+| 新文件/目录会是什么权限 | `umask` | `666 & ~umask` / `777 & ~umask`；022→644/755，077→600/700 |
+| 权限几位、属主是谁 | `stat -c` | 八进制 + 属主:属组 + 路径一行给全，比 `ls -l` 的 rwx 串更适合写报告 |
+| 目录本身的权限 | `ls -ld <目录>` | `ls -l dir/*` 看不到目录：`*` 已被 shell 展开成文件列表 |
+| 能否进入目录 | 目录是否有 `x` | 无 `x` 一律进不去；有 `x` 无 `r` 则进得去但 `ls` 列不出名字 |
+| ACL 是否设上 | `getfacl -p <路径>` | 出现 `user:名字` 与 `mask::` 行 |
+| ACL 为何不生效 | `#effective:` 列 | 生效 = 条目 ∩ mask；显示 `#effective:---` 即被裁光 |
+| 谁裁的权限 | `mask::` | 被 `chmod` 的组位或 `setfacl -m` 的重算改过 |
+
+**明细文档**：[02-linux-service-log-disk-management.md](02-linux-service-log-disk-management.md)　[06-lvm-and-filesystem-management.md](06-lvm-and-filesystem-management.md)　[07-user-group-acl-permissions.md](07-user-group-acl-permissions.md)
 
 ---
 
