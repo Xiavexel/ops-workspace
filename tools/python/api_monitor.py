@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import sys
+import os
 import time
 import logging
 import requests
@@ -81,8 +82,10 @@ def check_service(target, session):
 def main():
     # 1. 使用 argparse 解析命令行参数
     parser = argparse.ArgumentParser(description="API 并发巡检工具")
-    # 添加 -f 参数，如果不传，默认读取同目录下的 targets.json
-    parser.add_argument("-f", "--file", default="targets.json", help="指定目标配置文件 (JSON)")
+    # 默认配置按脚本所在目录解析，而不是当前工作目录：
+    # cron / systemd 调用时 CWD 不可控，用相对路径会直接 rc=2 找不到文件
+    default_targets = os.path.join(os.path.dirname(os.path.abspath(__file__)), "targets.json")
+    parser.add_argument("-f", "--file", default=default_targets, help="指定目标配置文件 (JSON)，不传则用同目录 targets.json")
     args = parser.parse_args()
 
     # 2. 读取 JSON 文件
