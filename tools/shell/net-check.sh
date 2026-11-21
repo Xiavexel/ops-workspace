@@ -53,5 +53,5 @@ if [[ "${SCHEME}" == "http" || "${SCHEME}" == "https" ]]; then
        -w "状态码: %{http_code}\n耗时: %{time_total}s\n" "${TARGET}"
 else
   echo "（非 HTTP 目标，跳过）"
-  echo "  要测端口请用: timeout 3 bash -c 'echo > /dev/tcp/'"${HOST}"'/<端口>' && echo open"
+  echo "  要测端口请用: timeout 3 bash -c \"echo > /dev/tcp/${HOST}/<端口>\" && echo open"
 fi
