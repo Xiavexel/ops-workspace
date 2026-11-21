@@ -25,6 +25,21 @@ def build_session():
     session.headers.update({"User-Agent": "ops-api-monitor/1.0"})
     return session
 
+# 需要凭据才能访问的状态码：服务在应答，只是没给钥匙
+WARN_AUTH_CODES = (401, 403)
+
+def judge(code):
+    """按"可达性"判，而不是"等于 200"。
+    巡检只该回答两件事：网络通不通、服务在不在应答；业务对不对不归它管。
+    返回 (verdict, note)，verdict ∈ PASS / WARN / FAIL。"""
+    if 200 <= code < 400:
+        # 2xx 正常；3xx 说明服务在应答（默认 allow_redirects=True 时多为已跟随到终点）
+        return "PASS", None
+    if code in WARN_AUTH_CODES:
+        # 401/403 不是"挂了"，是"要凭证"：必须 PASS，但日志里要显眼，别忘了配鉴权
+        return "WARN", "需鉴权"
+    return "FAIL", f"状态码 {code}"
+
 def check_service(target, session):
     name = target["name"]
     url = target["url"]
@@ -37,13 +52,17 @@ def check_service(target, session):
             resp = session.get(url, timeout=timeout)
             cost = int((time.time() - start_time) * 1000)
             
-            if resp.status_code == 200:
-                # 成功！直接 return True，退出整个函数，不再重试
+            verdict, note = judge(resp.status_code)
+            if verdict == "PASS":
+                # 可达即通过，不再要求恰好 200
                 logging.info(f"PASS {name} | 状态码: {resp.status_code} | 耗时: {cost}ms")
                 return True
-            else:
-                # 状态码不对（比如 502），记录错误但也允许重试
-                logging.warning(f"RETRY {name} | 状态码异常: {resp.status_code} (第 {attempt+1} 次尝试)")
+            if verdict == "WARN":
+                # 需鉴权：算成功、不进重试，但用 WARN 让它显眼
+                logging.warning(f"WARN {name} | 状态码: {resp.status_code} | {note} | 耗时: {cost}ms")
+                return True
+            # 其余（5xx、其他 4xx）：记录后允许重试
+            logging.warning(f"RETRY {name} | {note} (第 {attempt+1} 次尝试)")
                 
         except requests.exceptions.Timeout:
             logging.warning(f"RETRY {name} | 请求超时 (第 {attempt+1} 次尝试)")
