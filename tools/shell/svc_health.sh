@@ -142,6 +142,7 @@ main() {
 
   local name type target rest
   local running_jobs=0
+  local lineno=0   # 配置行号：结果文件名要带上它，否则同名两项会互相覆盖
 
   while IFS='|' read -r name type target rest || [[ -n "${name}" ]]; do
     name="${name%$'\r'}"
@@ -155,13 +156,18 @@ main() {
     fi
 
     # 【后台并发执行】：把检查任务扔到后台
+    lineno=$((lineno + 1))
     (
-      # 把结果重定向到临时文件，格式：状态码|输出信息
+      # 【修复·命名】结果文件名不能直接拼 ${name}：
+      #   1) name 里带 / 或空格 → 重定向直接失败（No such file or directory），该项永远统计不到；
+      #   2) 两项同名 → 后写的覆盖先写的，失败项被漏统计。
+      # 改用 "行号 + name 的 sha1 前 8 位"：任意字符都安全，同名靠行号区分。
       # dispatch_check 成功返回 0，失败返回 1
+      label="$(printf '%s' "${name}" | sha1sum | cut -c1-8)"
       if dispatch_check "${name}" "${type}" "${target}"; then
-        echo "0" > "${TMP_DIR}/res_${name}"
+        echo "0" > "${TMP_DIR}/res_${lineno}_${label}"
       else
-        echo "1" > "${TMP_DIR}/res_${name}"
+        echo "1" > "${TMP_DIR}/res_${lineno}_${label}"
       fi
     ) &
     

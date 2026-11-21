@@ -44,11 +44,15 @@ def run_ssh(host_info):
 
         # 【修复】exec_command 必须带 timeout，否则远端 hang 住会永久阻塞线程
         stdin, stdout, stderr = ssh.exec_command(command, timeout=EXEC_TIMEOUT)
-        # 【修复】成败以退出码为准，而不是"stderr 有没有输出"
-        # 很多正常命令（如 find 的权限告警、systemctl 的提示）也会写 stderr
-        exit_status = stdout.channel.recv_exit_status()
+        # 【修复·顺序错误，会死锁】必须先把两个流读干净，最后再取退出码。
+        # recv_exit_status() 会一直阻塞到远端进程退出；如果先调它，而远端输出已经写满
+        # 管道缓冲区（Linux 默认约 64KB），远端就会卡在 write() 上退不出去，
+        # 本地卡在等退出码 → 双向死锁，只能等到 EXEC_TIMEOUT 才解开（并误报超时）。
         output = stdout.read().decode('utf-8', 'replace').strip()
         error = stderr.read().decode('utf-8', 'replace').strip()
+        # 成败以退出码为准，而不是"stderr 有没有输出"
+        # 很多正常命令（如 find 的权限告警、systemctl 的提示）也会写 stderr
+        exit_status = stdout.channel.recv_exit_status()
 
         if exit_status != 0:
             detail = error or output or "(无输出)"

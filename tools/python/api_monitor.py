@@ -15,7 +15,17 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-def check_service(target):
+def build_session():
+    """统一出口：显式关闭环境代理。
+    requests 默认会读取 http_proxy / https_proxy / ALL_PROXY / no_proxy，
+    机器上挂了代理时，连对 127.0.0.1 的探测也会被送去代理 → 全部误报 FAIL。
+    trust_env=False 之后，代理、netrc、.env 一律不读，行为才是确定的。"""
+    session = requests.Session()
+    session.trust_env = False
+    session.headers.update({"User-Agent": "ops-api-monitor/1.0"})
+    return session
+
+def check_service(target, session):
     name = target["name"]
     url = target["url"]
     timeout = target.get("timeout", 3)  # 允许配置缺省，避免字段缺失时直接 KeyError
@@ -24,7 +34,7 @@ def check_service(target):
     for attempt in range(max_retries):
         start_time = time.time()
         try:
-            resp = requests.get(url, timeout=timeout)
+            resp = session.get(url, timeout=timeout)
             cost = int((time.time() - start_time) * 1000)
             
             if resp.status_code == 200:
@@ -70,9 +80,11 @@ def main():
     logging.info(f"==== 开始 Python API 并发巡检 (目标数: {len(targets)}) ====")
     fails = 0
     
+    # 所有请求共用一个 Session：连接池复用，且 trust_env 只需要在这里设一次
+    session = build_session()
     with ThreadPoolExecutor(max_workers=10) as executor:
         # 注意这里，把原来的 TARGETS 换成了从文件读取的 targets
-        future_to_target = {executor.submit(check_service, t): t for t in targets}
+        future_to_target = {executor.submit(check_service, t, session): t for t in targets}
         
         # 【修复】汇总判断必须在循环外
         # 原写法把 `if fails > 0: sys.exit(1)` 写在循环里：第一个目标失败就整体退出，
