@@ -189,11 +189,19 @@ kubectl delete pod --all -n monitoring --force --grace-period=0
 # 导出当前状态 JSON
 kubectl get ns monitoring -o json > /tmp/monitoring.json
 
-# 使用 sed 将 finalizers 数组清空
-sed -i 's/"finalizers": \[.*\]/"finalizers": []/' /tmp/monitoring.json
+# 用 jq 精确清空 .spec.finalizers（不要用 sed）
+# 为什么不用 sed：① sed 是逐行处理的，而 kubectl 输出的 JSON 是缩进多行的，
+#   "finalizers": [ 与 ] 不在同一行 → \[.*\] 匹配不到，命令静默无效果；
+# ② 就算压成单行，.* 是贪婪匹配，同一行里后面的数组也会被一起吃掉，产出的 JSON 直接非法。
+jq '.spec.finalizers = []' /tmp/monitoring.json > /tmp/monitoring-clean.json
+
+# 提交前先自证：确认只动了 finalizers，其他字段一字未变
+jq '.spec.finalizers' /tmp/monitoring-clean.json
+diff <(jq -S 'del(.spec.finalizers)' /tmp/monitoring.json) \
+     <(jq -S 'del(.spec.finalizers)' /tmp/monitoring-clean.json)
 
 # 通过 raw API 强制替换，完成删除
-kubectl replace --raw "/api/v1/namespaces/monitoring/finalize" -f /tmp/monitoring.json
+kubectl replace --raw "/api/v1/namespaces/monitoring/finalize" -f /tmp/monitoring-clean.json
 ```
 
 ---

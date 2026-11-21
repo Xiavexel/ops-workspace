@@ -46,12 +46,18 @@ CREATE DATABASE appdb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER 'appuser'@'localhost' IDENTIFIED BY 'App@123456';
 ```
 
-- **按需赋权**：只赋予该业务库的权限，绝不赋予全局管理权限。
+- **按需赋权**：只授予业务真正用到的那几个权限。`ALL PRIVILEGES` 虽然限定在 `appdb.*`，但它包含 `DROP`、`CREATE`、`GRANT OPTION` 等业务不需要的能力，等于把"库内最高权限"给了应用进程——一被 SQL 注入就能删表。这不是最小权限。
 
 ```sql
-GRANT ALL PRIVILEGES ON appdb.* TO 'appuser'@'localhost';
-FLUSH PRIVILEGES;
+-- 最小权限：只给业务实际的读写
+GRANT SELECT, INSERT, UPDATE, DELETE ON appdb.* TO 'appuser'@'localhost';
+
+-- 只有确实需要建表/改表时才补授权，且用完可回收（REVOKE）
+-- GRANT CREATE, ALTER, INDEX ON appdb.* TO 'appuser'@'localhost';
 ```
+
+- **验收判据**：`SHOW GRANTS FOR 'appuser'@'localhost';` 输出里**不应出现** `ALL PRIVILEGES`，也**不应出现** `ON *.*`。出现任一即为越权。
+- **关于 `FLUSH PRIVILEGES`**：8.0 起 `GRANT`/`REVOKE` 会自动刷新内存权限表，**用 GRANT 语句授权后不必再执行**；只有直接 `INSERT/UPDATE` 改 `mysql.user` 这类授权表时才需要。
 
 ---
 
