@@ -111,6 +111,6 @@ sudo cat /var/lib/mysql/<主机名>-slow.log
 
 ---
 
-## 5. SRE 视角：数据安全与高可用
+## 5. 生产视角推演：数据安全与高可用
 - **二进制日志（Binlog）**：`mysqldump` 属于全量备份。在生产环境中，必须开启 MySQL 的 `binlog`，配合 `mysqlbinlog` 工具，实现“全量备份 + 增量日志 = 任意时间点恢复（PITR）”。
 - **连接池监控**：业务端报“Too many connections”通常是因为连接泄漏。除了检查 `max_connections` 参数，更应关注业务代码的连接池配置（如 Python 的 SQLAlchemy pool_size）。

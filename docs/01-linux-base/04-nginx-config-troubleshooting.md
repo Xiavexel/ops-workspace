@@ -146,6 +146,6 @@ server {
 
 ---
 
-## 6. SRE 视角：网关性能与安全加固
+## 6. 生产视角推演：网关性能与安全加固
 - **隐藏版本号**：在 `nginx.conf` 的 `http` 块中添加 `server_tokens off;`，防止攻击者通过报错页面获取 Nginx 具体版本，降低被针对性攻击的风险。
 - **SSL 会话复用**：在 HTTPS 配置中开启 `ssl_session_cache shared:SSL:10m;` 和 `ssl_session_timeout 10m;`，大幅降低频繁握手的 CPU 消耗。

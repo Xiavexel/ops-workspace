@@ -162,6 +162,6 @@ sudo tcpdump -r /tmp/capture.pcap 'tcp[tcpflags] & (tcp-syn|tcp-ack) != 0'
 
 ---
 
-## 6. SRE 视角：网络架构防护
+## 6. 生产视角推演：网络架构防护
 - **DNS 高可用**：生产环境的 `/etc/resolv.conf` 不应只依赖单一 DNS，建议配置主备两个（如阿里云 + 腾讯云）。在内网架构中，应自建 CoreDNS 或 BIND 提供内部域名解析。
 - **TIME_WAIT 堆积**：高并发 Web 服务器（如 Nginx）经常会积累大量 TIME_WAIT 状态。需在 `/etc/sysctl.conf` 中调优 `net.ipv4.tcp_tw_reuse = 1` 和 `net.ipv4.tcp_max_tw_buckets`。

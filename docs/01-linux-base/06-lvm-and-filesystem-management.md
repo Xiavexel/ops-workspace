@@ -197,7 +197,7 @@ sudo rm -f /data/lvm-lab/lvm-lab.img /data/lvm-lab/lvm-lab2.img
 
 ---
 
-## 5. SRE 视角：扩容前断言与容量水位
+## 5. 生产视角推演：扩容前断言与容量水位
 
 - **扩容前先断言对象**：任何手动或脚本化扩容，第一步必须是"路径背后的设备 == 目标 LV"的比对，不一致立即退出，不进入写操作。参考实现：[`tools/shell/lvm-grow-safe.sh`](../../tools/shell/lvm-grow-safe.sh)（内含 `--dry-run`，落盘前先把计划打出来）。
 - **容量规划按 PE 记、不按 GB 记**：每块 PV 扣 4MiB，每个 LV 扣文件系统开销（XFS 内部日志从 64MiB 起），扩容还要为新 AG 付元数据税。规划阶段直接按标称容量的 90% 估算可用量。

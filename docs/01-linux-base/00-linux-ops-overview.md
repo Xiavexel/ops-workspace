@@ -2,7 +2,7 @@
 
 本阶段目标：从“桌面运维/基础操作”升维至“生产环境排障与配置”。掌握服务托管、网络排障、性能定位、核心中间件（Nginx/MySQL）的底层运维逻辑，并具备编写生产级脚本的思维。
 
-> **📌 测试环境说明**：本知识库中的实操命令与排障过程，均在个人 Rocky Linux 单节点 Lab 中完成。各阶段末尾的“SRE 视角”探讨的是生产环境的演进方向，请结合实际的集群规模与业务形态进行权衡。
+> **📌 测试环境说明**：本知识库中的实操命令与排障过程，均在个人 Rocky Linux 单节点 Lab 中完成。各阶段末尾的“生产视角推演”探讨的是生产环境的演进方向，请结合实际的集群规模与业务形态进行权衡。
 
 ## 文档导航
 
@@ -12,6 +12,7 @@
 | 系统服务/日志/磁盘 | 模块二 | [02-linux-service-log-disk-management.md](02-linux-service-log-disk-management.md) |
 | LVM 卷管理与在线扩容 | 模块二（存储扩展） | [06-lvm-and-filesystem-management.md](06-lvm-and-filesystem-management.md) |
 | 用户/组/权限（umask·ACL·mask） | 模块二（权限） | [07-user-group-acl-permissions.md](07-user-group-acl-permissions.md) |
+| 主机暴露面与 SSH 加固 | 模块二（安全加固） | [08-host-exposure-and-ssh-hardening.md](08-host-exposure-and-ssh-hardening.md) |
 | 性能瓶颈（CPU/内存/IO） | 模块三 | [03-performance-bottleneck-troubleshooting.md](03-performance-bottleneck-troubleshooting.md) |
 | Nginx 网关 | 模块四 | [04-nginx-config-troubleshooting.md](04-nginx-config-troubleshooting.md) |
 | MySQL 运维 | 模块五 | [05-mysql-ops-and-tuning.md](05-mysql-ops-and-tuning.md) |
@@ -80,7 +81,16 @@
 | ACL 为何不生效 | `#effective:` 列 | 生效 = 条目 ∩ mask；显示 `#effective:---` 即被裁光 |
 | 谁裁的权限 | `mask::` | 被 `chmod` 的组位或 `setfacl -m` 的重算改过 |
 
-**明细文档**：[02-linux-service-log-disk-management.md](02-linux-service-log-disk-management.md)　[06-lvm-and-filesystem-management.md](06-lvm-and-filesystem-management.md)　[07-user-group-acl-permissions.md](07-user-group-acl-permissions.md)
+### 5. 暴露面与 SSH 加固
+
+- **先读 `ss` 再谈防火墙**：`sudo ss -tulnp | sort -k4` 逐行回答"谁在听、听在哪、谁需要"。`firewalld` 是 `inactive` 不代表没规则——K8s/Docker 的 `KUBE-*`/`DOCKER-*` 链在 `nft` 里，而 `INPUT` 可能仍是 `policy accept`（等于主机侧不设防）。
+- **`firewall-cmd --add-port` 管不到容器端口**：Docker 直接插 `DOCKER` 链、NodePort 走 DNAT；"规则加了却没效果"第一步是确认流量走哪条链，而不是继续加规则。
+- **端口 owner 是 `systemd(pid=1)` = socket 激活**：去 `systemctl list-units --type=socket` 找同端口（本机 `9090` 是 Cockpit，不是 Prometheus）。
+- **SSH 加固顺序即安全**：先建密钥通道并验证 → 再禁密码 → 最后禁 root。判据取**生效值** `sshd -T`，不取文件内容。
+- **`sshd` 同一关键字先匹配先赢**：`sshd_config.d/` 里若 `01-` 写了 `PermitRootLogin yes`，你的 `99-` 就是废的。用 `grep -rn PermitRootLogin` 定位，改那个"先"的，别搞文件名前缀竞赛。
+- **主机密钥变更先核对指纹**：`sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` 与客户端收到的比对，一致才 `ssh-keygen -R <host>` 清旧记录；**绝不用 `StrictHostKeyChecking=no`**。
+
+**明细文档**：[02-linux-service-log-disk-management.md](02-linux-service-log-disk-management.md)　[06-lvm-and-filesystem-management.md](06-lvm-and-filesystem-management.md)　[07-user-group-acl-permissions.md](07-user-group-acl-permissions.md)　[08-host-exposure-and-ssh-hardening.md](08-host-exposure-and-ssh-hardening.md)
 
 ---
 

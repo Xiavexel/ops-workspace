@@ -99,6 +99,6 @@ ps -eo pid,ppid,stat,comm | grep " D "
 
 ---
 
-## 4. SRE 视角：性能基线建立
+## 4. 生产视角推演：性能基线建立
 - **历史指标留存**：在故障发生时，`top` 只能看当下。生产环境应部署 `sysstat` 服务，通过 `sar -u 1 3` 查看历史 CPU 负载，或通过 `sar -r` 查看历史内存趋势，以便事后复盘。
 - **压测前置**：任何新服务上线前，必须使用 `wrk` 或 `jmeter` 进行压力测试，确定其 TPS 和资源消耗基线，再根据基线配置 K8s 的 `resources.limits` 和 `requests`。

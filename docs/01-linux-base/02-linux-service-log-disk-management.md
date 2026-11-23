@@ -132,6 +132,6 @@ echo "" | sudo tee /proc/12477/fd/3 > /dev/null
 
 ---
 
-## 4. SRE 视角：存储与日志防爆策略
+## 4. 生产视角推演：存储与日志防爆策略
 - **Journald 持久化**：默认情况下，Systemd 日志存在内存中，重启即丢失。生产环境中需修改 `/etc/systemd/journald.conf`，设置 `Storage=persistent`，并限制 `SystemMaxUse=500M` 防止占满磁盘。
 - **磁盘水位监控**：除了手动排查，必须在 `/data` 等核心分区配置 Prometheus 监控（如 Node Exporter 的 `node_filesystem_avail_bytes` 指标），在磁盘使用率达到 80% 时自动告警。
