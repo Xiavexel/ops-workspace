@@ -1,9 +1,9 @@
-# Linux 生产环境实战：用户、组与权限（umask / ACL / sudoers）
+# Linux 生产环境实战：用户、组与权限（umask / ACL / 特殊位 / sudoers）
 
 "权限不对"是生产环境里最高频的求助之一，而绝大多数误判来自三个概念没分清：**默认权限是 umask 算出来的、目录能不能进看 `x` 位、ACL 到底生效没生效看 `mask` 与 `#effective`**。本章用一轮可复现的实机实验把这三条钉死，并把"我给了权限却没生效"这类现场归成可复算的判据。
 
 > **返回总览**：[00-linux-ops-overview.md](00-linux-ops-overview.md)　空间不足的处置见 [02-linux-service-log-disk-management.md](02-linux-service-log-disk-management.md)
-> **边界声明**：本章 1–5 节的命令与输出为 Rocky Linux 10.2 单机 Lab 实测；例外共四处，均在正文标注：第 3 节"有 x 无 r 能否 `ls`"、第 5 节"`/etc/sudoers.d` 忽略含点文件名"、第 6 节 SGID 继承属组、ACL 备份恢复。**SUID / SGID / Sticky 三连本次未执行**，只在第 6 节讲原理。
+> **边界声明**：本章 1–6 节的命令与输出全部为 Rocky Linux 10.2 单机 Lab 实测；例外共三处，均在正文标注：第 3 节"有 x 无 r 能否 `ls`"、第 5 节"脚本加 SUID 无效"（按内核行为，未实测）、第 7 节 ACL 备份恢复与 SGID 写在文件上的语义。**SUID / SGID / Sticky 三连已于同机实测**（见 §5）。
 
 ---
 
@@ -80,7 +80,7 @@ stat -c '%a %U:%G %n' /tmp/perm-lab/*
 ### 故障解决方案（以为是"组权限没继承"）
 
 - **现象**：`/tmp/perm-lab` 已经 `chown alice:ops`，但 alice 在里面新建的文件属组是 `alice:alice`，不是 `alice:ops`。
-- **原理**：新建文件的属组取自**进程 egid**（alice 的主组 `alice`），父目录属组不参与继承。要让"属组跟随父目录"，必须给父目录设 **SGID**（如 `chmod 2775`，首位 `2` 就是 SGID）——**本次未执行，待验证**。
+- **原理**：新建文件的属组取自**进程 egid**（alice 的主组 `alice`），父目录属组不参与继承。要让“属组跟随父目录”，必须给父目录设 **SGID**（`chmod 2775`，首位 `2`）；**已在 §5 实测证实**——`2775` 目录下 alice 建的文件属组是 `ops`，对照的 `775` 目录仍是 `alice`。
 - **解决**：要么接受现状（属主自己能读写，够用）；要么给共享目录设 SGID + 用 `umask 002` 让组内可写。
 - **实测回显**：
   ```
@@ -201,7 +201,96 @@ sudo getfacl -p /data/acl-lab/report.txt
 
 ---
 
-## 5. sudoers 最小授权：三条命令 + 一个包装脚本
+## 5. 特殊位三连：SUID / SGID / Sticky
+
+**核心目的**：用同一个 Lab 分别证明三个特殊位各自解决什么，并说清它们**不**解决什么——这是"共享目录为什么还是写不进""为什么 SUID 脚本没反应"这类现场的唯一解释来源。
+
+### 常用命令
+
+```bash
+# ---------- SGID：目录上的 2 位，让新建文件继承属组 ----------
+sudo mkdir -p /tmp/sbit-lab/share /tmp/sbit-lab/plain
+sudo chgrp ops /tmp/sbit-lab/share /tmp/sbit-lab/plain
+sudo chmod 2775 /tmp/sbit-lab/share      # 带 SGID
+sudo chmod 775  /tmp/sbit-lab/plain      # 不带 SGID，对照组
+sudo -u alice touch /tmp/sbit-lab/share/a.txt
+sudo -u alice touch /tmp/sbit-lab/plain/b.txt
+stat -c '%a %U:%G %n' /tmp/sbit-lab/share /tmp/sbit-lab/plain \
+                      /tmp/sbit-lab/share/a.txt /tmp/sbit-lab/plain/b.txt
+
+# ---------- SUID：ELF 二进制的属主是谁，euid 就是谁 ----------
+sudo cp /usr/bin/whoami /tmp/sbit-lab/whoami-root
+sudo chown root:root /tmp/sbit-lab/whoami-root
+sudo chmod 4755 /tmp/sbit-lab/whoami-root
+sudo -u alice /tmp/sbit-lab/whoami-root          # 期望输出 root
+ls -l /usr/bin/passwd                            # 系统里的现成例子
+
+# ---------- Sticky：目录 1777，禁止跨用户删除 ----------
+sudo mkdir /tmp/sticky-lab && sudo chmod 1777 /tmp/sticky-lab
+sudo -u alice touch /tmp/sticky-lab/a.txt
+sudo -u bob   touch /tmp/sticky-lab/b.txt
+sudo -u alice rm -f /tmp/sticky-lab/b.txt; echo "rc=$?"   # 期望 rc=1
+sudo -u bob   rm -f /tmp/sticky-lab/b.txt; echo "rc=$?"   # 期望 rc=0
+
+# ---------- 共享目录的第二半：umask 002 决定"组内能不能写" ----------
+sudo -u bob   bash -c 'echo ok >> /tmp/sbit-lab/share/a.txt'; echo "rc=$?"   # 644，期望 rc=1
+sudo -u alice bash -c 'umask 002; cd /tmp/sbit-lab/share && touch c.txt'
+stat -c '%a %U:%G %n' /tmp/sbit-lab/share/c.txt                              # 期望 664 alice:ops
+sudo -u bob   bash -c 'echo ok >> /tmp/sbit-lab/share/c.txt'; echo "rc=$?"   # 期望 rc=0
+```
+
+### 运行手段与操作规范
+
+- **数字位怎么读**：`4`=SUID、`2`=SGID、`1`=Sticky，与属主/组/其他三位叠加。所以 `4755` → `-rwsr-xr-x`、`2775` → `drwxrwsr-x`、`1777` → `drwxrwxrwt`。
+- **同一个位，作用在文件上和在目录上完全不同**：`SGID` 在**目录**= 新建文件继承该目录的属组；在**文件**= 以文件属组身份运行。`SUID` 只能作用在文件上。
+- **`SUID` 只对 ELF 生效**：给 `.sh` 加 `u+s` 内核直接忽略，因为解释器脚本的 euid 不会继承（未实测，按内核行为；验证法：复制一个脚本加 `4755`，跑 `whoami` 仍是自己）。
+- **`Sticky` 只管"删/改名"**：它不限制读、写、执行；`/tmp` 用它来防止"我删你的临时文件"。
+- **目录的 `w` 位决定"能不能在里面建文件"**：`root` 建的 `755` 目录，普通用户连 `touch` 都被拒（本次实测：`cp` 报"权限不够"）。这条不是权限配置问题，是常识缺口。
+- **SGID 与 umask 是两件事**：SGID 决定属组，umask 决定组那三位是 `r` 还是 `rw`。两个都到位，才叫"共享目录"。
+
+### 故障解决方案（三个现场）
+
+**现场一：`SGID` 设了，组里的人还是写不进**
+
+- **现象**：`share` 是 `2775 root:ops`，`alice` 建出的 `a.txt` 属组确实是 `ops`，但 `bob` 追加写入 `rc=1`（`权限不够`）。
+- **原理**：`umask 022` 下新文件是 `644`——**属组只有 `r`，没有 `w`**。SGID 只解决"属组是谁"，不解决"组能不能写"。
+- **解决**：建文件时 `umask 002` → `664`，组内可写。生产里共享目录的进程/服务要以 `umask 002` 运行（或目录上用 `setfacl -d` 设默认 ACL）。
+- **实测回显**：
+  ```
+  644 alice:ops    /tmp/sbit-lab/share/a.txt      ← 属组对了，但组只有 r
+  664 alice:ops    /tmp/sbit-lab/share/c.txt      ← umask 002 之后
+  bob写a.txt的rc=1、bob写c.txt的rc=0
+  ```
+
+**现场二：以为 `Sticky` 是"禁止删除"**
+
+- **现象**：`/tmp/sticky-lab` 设 `1777`，`alice` 删 `bob` 的文件被拒（`不允许的操作`，`rc=1`），但 `bob` 删自己的 `rc=0`。
+- **原理**：`Sticky` 的规则是"只有文件属主（或目录属主、root）能删/改名"，它**不是**"谁都不能删"。
+- **解决**：要"谁都不能删"，只能靠目录权限（去掉 `w`）或 ACL；`Sticky` 解决的是"公共目录里互相别踩"。
+- **实测回显**：
+  ```
+  rm: 无法删除 '/tmp/sticky-lab/b.txt': 不允许的操作
+  alice删bob的rc=1
+  bob删自己的rc=0
+  drwxrwxrwt. 2 root root 19 11月24日 14:48 /tmp/sticky-lab
+  ```
+
+**现场三：`cp` 报"权限不够"，以为是 SUID 的问题**
+
+- **现象**：执行 `cp /usr/bin/whoami /tmp/sbit-lab/whoami-root` 失败，跟 SUID 完全无关。
+- **原理**：`/tmp/sbit-lab` 是 `sudo mkdir` 建的 `755 root:root`，`xia` 只有 `r-x`——**目录没有 `w`，就建不了文件**。
+- **解决**：`sudo cp`（本次就这么做的）；或 `chown xia /tmp/sbit-lab`。
+- **实测回显**：
+  ```
+  drwxr-xr-x. 4 root root 32 11月24日 14:46 /tmp/sbit-lab
+  -rwsr-xr-x. 1 root root 36656 11月24日 14:48 /tmp/sbit-lab/whoami-root
+  sudo -u alice /tmp/sbit-lab/whoami-root  →  root
+  ```
+- **安全红线**：`4755` 的 root 二进制就是一个**提权后门**。实验完立刻 `sudo rm -f /tmp/sbit-lab/whoami-root`，不留；目录整体清理用 `sudo rm -r /tmp/sbit-lab /tmp/sticky-lab`。
+
+---
+
+## 6. sudoers 最小授权：三条命令 + 一个包装脚本
 
 **核心目的**：给业务账号只放行三件事——重启 nginx、看 nginx 日志、校验 nginx 配置——并且能**拿出证据**证明"该给的给了、不该给的一律进不来"。
 
@@ -294,12 +383,12 @@ sudo chmod 0755 /usr/local/bin/op-nginx-log
 
 ---
 
-## 6. 生产视角推演：最小授权与权限审计
+## 7. 生产视角推演：最小授权与权限审计
 
 - **不要用 `chmod 777` 解决"访问不了"**：它同时放开属组与 other，把"一个人需要访问"变成"全机可写"。正确手法是 ACL 精确授权。
-- **共享目录的正确组合是 `SGID + umask 002`**：`chmod 2775` 让新建文件继承属组，`umask 002` 让组内可写。只给 `chmod 775` 时，新建文件仍是"属主私有"（本次未执行，待验证）。
+- **共享目录的正确组合是 `SGID + umask 002`**：`chmod 2775` 只解决“属组是谁”，`umask 002` 才解决“组内能不能写”。§5 实测：同一个 `2775` 目录，`umask 022` 建出 `644`（`bob` 写不进），`umask 002` 建出 `664`（`bob` 写进）。
 - **权限基线**：新文件 `640`（配置/数据）或 `664`（共享），新目录 `750`/`755`。出现 `777`、`o+w`、来源不明的 `SUID` 二进制，都应当作缺陷上报。
-- **特殊位三连（SUID / SGID / Sticky，本次未执行，只讲原理）**：`SUID` 让执行者以**文件属主**身份运行（`/usr/bin/passwd` 就是）；`SGID` 在目录上表示"新建文件继承属组"、在文件上表示"以属组身份运行"；`Sticky`（目录 `1777`）限制"只有属主能删自己的文件"（`/tmp` 就是）。
+- **特殊位三连（已实测，见 §5）**：`SUID` 让进程 euid 变成**文件属主**（`/usr/bin/passwd` 带 `rws`；本次把 `whoami` 复制成 root 并 `4755`，alice 执行输出 `root`）；`SGID` 在目录上让新建文件继承属组；`Sticky`（`1777`）**只挡跨用户删除**（实测 alice 删 bob 的文件 `rc=1`、bob 删自己的 `rc=0`）。
 - **ACL 要跟备份一起走**（推演，未落地）：`getfacl -R /data > acl.bak` 备份、`setfacl --restore=acl.bak` 恢复。**迁移/恢复时 ACL 不跟着走，就是"恢复完权限全丢"的经典事故**。
 - **审计判据**：`find /data -type f -perm -o+w` 找 other 可写；`getfacl -R` 批量导出后 grep `mask` 与 `#effective` 找被裁掉的条目。
 - **权限问题的排查顺序**（本次实验验证过有效）：先 `ls -ld` / `stat -c` 定语主与八进制位 → 再 `getfacl` 看是否有 ACL → 最后**只看 `#effective`** 判能不能用。三层跳错一层，结论就会错。
