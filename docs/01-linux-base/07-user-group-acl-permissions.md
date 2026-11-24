@@ -1,9 +1,9 @@
-# Linux 生产环境实战：用户、组与权限（umask / ACL / mask）
+# Linux 生产环境实战：用户、组与权限（umask / ACL / sudoers）
 
 "权限不对"是生产环境里最高频的求助之一，而绝大多数误判来自三个概念没分清：**默认权限是 umask 算出来的、目录能不能进看 `x` 位、ACL 到底生效没生效看 `mask` 与 `#effective`**。本章用一轮可复现的实机实验把这三条钉死，并把"我给了权限却没生效"这类现场归成可复算的判据。
 
 > **返回总览**：[00-linux-ops-overview.md](00-linux-ops-overview.md)　空间不足的处置见 [02-linux-service-log-disk-management.md](02-linux-service-log-disk-management.md)
-> **边界声明**：本章 1–4 节的命令与输出为 Rocky Linux 10.2 单机 Lab 实测，唯一例外是第 3 节"有 x 无 r"一条（已标推演并附验证命令）；第 5 节标注"推演"的部分未落地；**SUID / SGID / Sticky 三连本次未执行**，只在第 5 节讲原理。
+> **边界声明**：本章 1–5 节的命令与输出为 Rocky Linux 10.2 单机 Lab 实测；例外共四处，均在正文标注：第 3 节"有 x 无 r 能否 `ls`"、第 5 节"`/etc/sudoers.d` 忽略含点文件名"、第 6 节 SGID 继承属组、ACL 备份恢复。**SUID / SGID / Sticky 三连本次未执行**，只在第 6 节讲原理。
 
 ---
 
@@ -201,7 +201,100 @@ sudo getfacl -p /data/acl-lab/report.txt
 
 ---
 
-## 5. 生产视角推演：最小授权与权限审计
+## 5. sudoers 最小授权：三条命令 + 一个包装脚本
+
+**核心目的**：给业务账号只放行三件事——重启 nginx、看 nginx 日志、校验 nginx 配置——并且能**拿出证据**证明"该给的给了、不该给的一律进不来"。
+
+### 常用命令
+
+```bash
+# 0) 基线对照组：加规则之前，他能不能 sudo（这条回显后面要用来对比）
+sudo -l -U alice
+
+# 1) 用 visudo 写 drop-in：它自带语法校验，写错不允许保存
+sudo sh -c 'EDITOR=nano visudo -f /etc/sudoers.d/ops'
+
+# 2) 权限必须 0440，然后用 visudo -c 复核整份配置（含所有 drop-in）
+sudo chown root:root /etc/sudoers.d/ops
+sudo chmod 0440 /etc/sudoers.d/ops
+sudo visudo -c
+
+# 3) 核对"规则到底命中了谁、命中了哪几条"
+sudo -l -U alice
+
+# 4) 正面验证：sudo -n 是 NOPASSWD 唯一无法作假的判据
+sudo -u alice -H bash -lc 'sudo -n /usr/sbin/nginx -t; echo rc=$?'
+sudo -u alice -H bash -lc 'sudo -n /usr/bin/systemctl restart nginx; echo rc=$?'
+
+# 5) 包装脚本：参数由 root 写死，业务侧无法注入
+cat > /usr/local/bin/op-nginx-log <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+exec /usr/bin/journalctl -u nginx -n 50 --no-pager --no-hostname
+EOF
+sudo chown root:root /usr/local/bin/op-nginx-log
+sudo chmod 0755 /usr/local/bin/op-nginx-log
+```
+
+规则内容（`/etc/sudoers.d/ops`，三行）：
+
+```
+%ops ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx, \
+                            /usr/local/bin/op-nginx-log, \
+                            /usr/sbin/nginx -t
+```
+
+### 运行手段与操作规范
+
+- **drop-in 文件名不含点号**：`/etc/sudoers.d/` 会静默跳过名字里带 `.`、或以 `~` 结尾的文件。命名 `ops.conf` 语法全对也完全不生效，且没有任何报错（推演，未实测；验证法：建一个 `ops.conf` 放同一条规则，看 `sudo -l -U alice` 是否多出条目）。
+- **权限的两套标准**：`sudo` 实际只要求"组/其他不可写"，所以 `0640` 也能生效；`visudo -c` 按标准 `0440` 判定。**"能用"不等于"合规"，以 `visudo -c` 为准。**
+- **规则里写参数 = 精确匹配**：`/usr/bin/journalctl -u nginx` 只允许"就这两个参数"，多一个 `-n 5` 就拒。
+- **规则里不写参数 = 允许任意参数**（反直觉，但这是 sudoers 的真实语义）：`/usr/local/bin/op-nginx-log` 后接 `--vacuum-size=1M` 照样匹配。
+- **`%ops` 不能漏 `%`**：漏掉就变成"查找名为 ops 的用户"，规则永远不命中。
+- **sudo 的判定顺序是"先认证、后授权"**：所以未认证时的报错是"需要密码"，不是"不得执行"——这两条消息含义完全不同。
+- **包装脚本的四条硬要求**：root 拥有、`0755`（组/其他不可写）、内部用绝对路径、**不引用 `$@` / `$1`**。前两条防"脚本被改写＝直接 root"，后两条防参数注入。
+- **`NOPASSWD` 只该给自动化**：人工操作应当保留密码校验，免密等于把 DoS 面（停/重启业务）交给任何能登录该账号的人。
+
+### 故障解决方案（四个现场）
+
+**现场一：`0640` 能跑，但 `visudo` 报警**
+
+- **现象**：`visudo` 新建文件后是 `-rw-r-----`（`0640`），`sudo -l -U alice` 正常列出三条，但 `visudo -c` 报 `权限不正确，模式应该是 0440`。
+- **原理**：sudo 只拒绝"组或其他可写"的文件，`0640` 不满足这个条件所以照常解析；`visudo` 要求严格 `0440`。
+- **解决**：`chmod 0440`，再跑 `ls -l` 与 `visudo -c` 复核。
+- **实测回显**：
+  ```
+  -r--r-----. 1 root root 169 11月24日 14:28 /etc/sudoers.d/ops
+  /etc/sudoers.d/ops：解析正确
+  ```
+
+**现场二："需要密码" ≠ "不得执行"**
+
+- **现象**：同一台机器上，加规则前后 `alice` 得到的拒绝消息完全不同。
+- **原理**：不在 sudoers 里的人连认证机会都没有，直接"无权运行 sudo"；一旦进入 sudoers，sudo 先要密码、再判授权。`sudo -n` 不许输入，就停在认证门口。
+- **代价**：**`rc=1` 只能证明"拿不到密码"，证明不了"授权被拒"**。真正能取证的只有日志里的 `command not allowed`。
+- **实测回显**：
+  ```
+  用户 alice 无权在 xia-server 上运行 sudo。        ← 加规则前
+  sudo: 需要密码 / rc=1                             ← 加规则后、不匹配的命令
+  ```
+
+**现场三：不带参数能用，带参数也 `rc=0`**
+
+- **现象**：alice 执行 `sudo -n /usr/local/bin/op-nginx-log --vacuum-size=1M`，不但没被拒，还正常输出日志、`rc=0`。
+- **原理**：两层同时成立——① 规则不写参数，所以"任意参数"都匹配；② 脚本不引用 `$@`，参数被吞掉，`journalctl` 根本没收到这个开关。
+- **判据（关键）**：**不能看 `rc`，要看"参数有没有产生效果"**。`journalctl` 执行 vacuum 时一定会打印 `Vacuuming done, freed …`，本次输出里没有这一行；`journalctl --disk-usage` 也仍是 `8M`（若真按 `--vacuum-size=1M` 压过，会落到 1M 量级；注意 active 文件不会被清，所以磁盘数字只能辅助，**不能单独作判据**）。
+- **结论**：**安全边界来自脚本代码，不是来自规则**。这也是"为什么不能把带参数的原始命令直接交给 sudoers"的实机解释。
+
+**现场四：`timestamp_timeout` 会把 NOPASSWD 的测试搅浑**
+
+- **现象**：`sudo -l -U alice` 的默认条目里带 `timestamp_timeout=30, timestamp_type=global`。
+- **影响**：即使用户没有 `NOPASSWD`，30 分钟内（全局、跨终端）也可能免密切入；只看"`sudo xxx` 有没有要密码"会得出错误结论。
+- **解决**：所有免密测试一律带 `-n`（非交互），它需要密码就立刻失败，无法被 timestamp 掩盖。
+
+---
+
+## 6. 生产视角推演：最小授权与权限审计
 
 - **不要用 `chmod 777` 解决"访问不了"**：它同时放开属组与 other，把"一个人需要访问"变成"全机可写"。正确手法是 ACL 精确授权。
 - **共享目录的正确组合是 `SGID + umask 002`**：`chmod 2775` 让新建文件继承属组，`umask 002` 让组内可写。只给 `chmod 775` 时，新建文件仍是"属主私有"（本次未执行，待验证）。
@@ -210,3 +303,5 @@ sudo getfacl -p /data/acl-lab/report.txt
 - **ACL 要跟备份一起走**（推演，未落地）：`getfacl -R /data > acl.bak` 备份、`setfacl --restore=acl.bak` 恢复。**迁移/恢复时 ACL 不跟着走，就是"恢复完权限全丢"的经典事故**。
 - **审计判据**：`find /data -type f -perm -o+w` 找 other 可写；`getfacl -R` 批量导出后 grep `mask` 与 `#effective` 找被裁掉的条目。
 - **权限问题的排查顺序**（本次实验验证过有效）：先 `ls -ld` / `stat -c` 定语主与八进制位 → 再 `getfacl` 看是否有 ACL → 最后**只看 `#effective`** 判能不能用。三层跳错一层，结论就会错。
+- **sudoers 的安全边界在脚本里，不在规则里**：只要放行的是"脚本路径"，规则就不再限制参数；注入能否生效，取决于脚本是否转发 `$@`。所以"给运维只放开某条命令"的正确形态是**一个 root 拥有、参数写死的包装脚本**，而不是一条带通配符的 sudoers 行。
+- **提权要给"能力"，不要给"命令集合"**：一条 `systemctl restart nginx` 挡不住 `systemctl stop nginx`（要另写一行才行），也挡不住"重启 30 次打崩业务"。真正的最小授权要同时回答三件事：**能做哪个动作、作用在哪个对象、能做多少次**。sudoers 只能管前两件，第三件要靠监控与审计（`journalctl -t sudo` 里的 `command not allowed` 与调用频次）。

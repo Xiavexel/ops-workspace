@@ -11,7 +11,7 @@
 | 网络与连通性 | 模块一 | [01-linux-network-troubleshooting.md](01-linux-network-troubleshooting.md) |
 | 系统服务/日志/磁盘 | 模块二 | [02-linux-service-log-disk-management.md](02-linux-service-log-disk-management.md) |
 | LVM 卷管理与在线扩容 | 模块二（存储扩展） | [06-lvm-and-filesystem-management.md](06-lvm-and-filesystem-management.md) |
-| 用户/组/权限（umask·ACL·mask） | 模块二（权限） | [07-user-group-acl-permissions.md](07-user-group-acl-permissions.md) |
+| 用户/组/权限/sudoers（umask·ACL·mask） | 模块二（权限） | [07-user-group-acl-permissions.md](07-user-group-acl-permissions.md) |
 | 主机暴露面与 SSH 加固 | 模块二（安全加固） | [08-host-exposure-and-ssh-hardening.md](08-host-exposure-and-ssh-hardening.md) |
 | 性能瓶颈（CPU/内存/IO） | 模块三 | [03-performance-bottleneck-troubleshooting.md](03-performance-bottleneck-troubleshooting.md) |
 | Nginx 网关 | 模块四 | [04-nginx-config-troubleshooting.md](04-nginx-config-troubleshooting.md) |
@@ -70,6 +70,7 @@
 - **目录的 `x` 是穿越位**：只有 `r` 没 `x` → 看得见名字、进不去；只有 `x` 没 `r` → 进得去但 `ls` 列不出名字。看目录自身要用 `ls -ld`，`ls -l dir/*` 根本看不到目录。
 - **ACL 的判据只有 `#effective`**：实际生效 = 条目 ∩ `mask`，而 `mask` 只约束 named user / named group / `group::`。`setfacl -m` 每次都会重算 mask，所以要制造限制必须"条目先设完、最后单独 `m::`"；文件有 ACL 时 `chmod` 的组位改的是 mask，不是 `group::`。
 - **排查顺序（错一层结论就错）**：先 `ls -ld` / `stat -c` 定语主与八进制位 → 再 `getfacl` 看有没有 ACL → 最后**只看 `#effective`** 判能不能用。
+- **sudoers 的两条反直觉**：规则里**写了参数** → 命令行必须精确匹配（多一个 `-n 5` 就拒）；**不写参数** → 任意参数都放行。所以"给某人只放开某条命令"的正确形态是**root 拥有的包装脚本**（参数写死、不转发 `$@`），安全边界在脚本代码里，不在 sudoers 行里。免密测试一律带 `sudo -n`，否则 `timestamp_timeout` 会让结论失真。
 
 | 我要判断…… | 看什么 | 判据 |
 |---|---|---|
@@ -80,6 +81,8 @@
 | ACL 是否设上 | `getfacl -p <路径>` | 出现 `user:名字` 与 `mask::` 行 |
 | ACL 为何不生效 | `#effective:` 列 | 生效 = 条目 ∩ mask；显示 `#effective:---` 即被裁光 |
 | 谁裁的权限 | `mask::` | 被 `chmod` 的组位或 `setfacl -m` 的重算改过 |
+| 某个账号现在有哪些 sudo 权限 | `sudo -l -U <用户>` | 加 `-U` 查别人（需 root）；输出只应出现你写的那几条，多一条都算超授 |
+| sudo 规则写了却没生效 | `visudo -c` / `sudo -l -U <用户>` | 先看语法与权限（`0440`）；`sudo -l` 里压根没条目 → 多半是文件名含 `.`，被 `/etc/sudoers.d` 静默跳过 |
 
 ### 5. 暴露面与 SSH 加固
 
